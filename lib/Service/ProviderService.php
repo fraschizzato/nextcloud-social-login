@@ -303,6 +303,16 @@ class ProviderService
             $adapter = new $class($config, null, $this->storage);
             $adapter->authenticate();
             $profile = $adapter->getUserProfile();
+            $tokens = [];
+            if (method_exists($adapter, 'getAccessToken')) {
+                $tokens = $adapter->getAccessToken();
+            }
+            if (method_exists($adapter, 'getStoredData')) {
+                $idToken = $adapter->getStoredData('id_token');
+                if ($idToken !== null) {
+                    $tokens['id_token'] = $idToken;
+                }
+            }
         }  catch (\Exception $e) {
             $this->storage->clear();
             throw new LoginException($e->getMessage());
@@ -416,10 +426,10 @@ class ProviderService
         if (strlen($uid) > 64 || !preg_match('#^[a-z0-9_.@-]+$#i', $profileId)) {
             $uid = $provider.'-'.md5($profileId);
         }
-        return $this->login($uid, $profile, $provider.'-');
+        return $this->login($uid, $profile, $provider.'-', $tokens);
     }
 
-    private function login($uid, Profile $profile, $newGroupPrefix = '')
+    private function login($uid, Profile $profile, $newGroupPrefix = '', array $tokens = [])
     {
         $user = $this->userManager->get($uid);
         if (null === $user) {
@@ -585,6 +595,19 @@ class ProviderService
         ], false);
 
         $user->updateLastLoginTimestamp();
+
+        if (!empty($tokens)) {
+            $this->config->setUserValue($user->getUid(), $this->appName, 'token', $tokens['id_token'] ?? '');
+            $this->config->setUserValue($user->getUid(), $this->appName, 'access_token', $tokens['access_token'] ?? '');
+            $this->config->setUserValue($user->getUid(), $this->appName, 'refresh_token', $tokens['refresh_token'] ?? '');
+            $expires = $tokens['expires_at'] ?? null;
+            if (!$expires && isset($tokens['expires_in'])) {
+                $expires = time() + (int)$tokens['expires_in'];
+            }
+            if ($expires) {
+                $this->config->setUserValue($user->getUid(), $this->appName, 'expires_at', $expires);
+            }
+        }
 
         //Workaround to create user files folder. Remove it later.
         \OC::$server->get(\OCP\Files\IRootFolder::class)->getUserFolder($user->getUID());
