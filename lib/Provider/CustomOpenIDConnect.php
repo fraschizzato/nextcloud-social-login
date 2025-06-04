@@ -19,6 +19,7 @@ class CustomOpenIDConnect extends CustomOAuth2
             // JWT token is base64url encoded
             $data = base64_decode(str_pad(strtr($payload, '-_', '+/'), strlen($payload) % 4, '=', STR_PAD_RIGHT));
             $this->storeData('user_data', $data);
+            $this->storeData('id_token', $idToken);
         } else {
             throw new Exception('No id_token was found.');
         }
